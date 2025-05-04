@@ -14,6 +14,7 @@ import { config } from "@/solana-service/config";
 import { Connection, PublicKey } from "@solana/web3.js";
 import { clusterApiUrl } from "@solana/web3.js";
 import { WalletAdapterNetwork } from "@solana/wallet-adapter-base";
+import { TOKEN_PROGRAM_ID } from "@solana/spl-token";
 
 import { EscrowProgram } from "@/solana-service/program";
 import { Wallet } from "@coral-xyz/anchor";
@@ -26,14 +27,27 @@ import { Toaster } from "sonner";
 import { createPass, query } from "./utils";
 
 import TakeOfferDialog from "@/components/dialogs/take-offer-dialog";
+import { TokenListPage } from "./pages/token-list";
+import { TokenListProvider, TokenInfo } from "@solana/spl-token-registry";
+
+// Token interface
+interface Token {
+  mint: string;
+  tokenAmount: {
+    uiAmount: number;
+    decimals: number;
+  };
+}
 
 const App: React.FC = () => {
   const [isWalletConnected, setIsWalletConnected] = useState(false);
   const [loading, setLoading] = useState(false);
   const [selectedOffer, setSelectedOffer] = useState<Offer | null>(null);
   const [walletAddress, setWalletAddress] = useState<string | null>(null);
+  const [tokens, setTokens] = useState<Token[]>([]);
   const wallet = useAnchorWallet();
   const queryClient = useQueryClient();
+  const [tokenMap, setTokenMap] = useState<Map<string, TokenInfo>>(new Map());
 
   const { data } = useQuery({
     queryKey: ["offers"],
@@ -49,6 +63,7 @@ const App: React.FC = () => {
     orders: 1,
     openOffers: 1,
     accountOffers: 1,
+    tokenList: 1
   });
 
   const { connect, connected, publicKey, disconnect, select, wallets } =
@@ -60,6 +75,7 @@ const App: React.FC = () => {
     (currentPage.orders - 1) * ITEMS_PER_PAGE,
     currentPage.orders * ITEMS_PER_PAGE
   );
+
 
   const paginatedOpenOffers = (data?.offers ?? [])
     .filter((el) => !el.closed)
@@ -126,6 +142,36 @@ const App: React.FC = () => {
     }
   }, [connected, publicKey]);
 
+  useEffect(() => {
+    const getTokens = async () => {
+      if (!walletAddress) return;
+
+      const connection = new Connection("https://api.devnet.solana.com", "confirmed");
+      const publicKey = new PublicKey(walletAddress);
+
+      const tokenAccounts = await connection.getParsedTokenAccountsByOwner(
+        publicKey,
+        { programId: TOKEN_PROGRAM_ID }
+      );
+
+      const filtered = tokenAccounts.value
+        .map((acc) => acc.account.data.parsed.info)
+        .filter((info) => info.tokenAmount.uiAmount > 0);
+
+      setTokens(filtered);
+    };
+
+    getTokens();
+  }, [walletAddress]);
+
+  useEffect(() => {
+    new TokenListProvider().resolve().then((tokens) => {
+      const tokenList = tokens.filterByChainId(103).getList(); // 103 — devnet, 101 — mainnet
+      const map = new Map(tokenList.map((t) => [t.address, t]));
+      setTokenMap(map);
+    });
+  }, []);
+
   return (
     <main className="flex min-h-screen flex-col items-center justify-between p-24">
       <div className="z-10 max-w-5xl w-full items-center justify-between font-mono text-sm">
@@ -136,10 +182,11 @@ const App: React.FC = () => {
           Password: {createPass(walletAddress)}
         </h2>
         <Tabs defaultValue="orders" className="w-full">
-          <TabsList className="grid w-full grid-cols-3">
+          <TabsList className="grid w-full grid-cols-4">
             <TabsTrigger value="orders">All Offers</TabsTrigger>
             <TabsTrigger value="openOffers">Open Offers</TabsTrigger>
             <TabsTrigger value="accountOffers">Account Offers</TabsTrigger>
+            <TabsTrigger value="tokenList">Tokens List</TabsTrigger>
           </TabsList>
 
           <TabsContent value="orders">
@@ -168,6 +215,15 @@ const App: React.FC = () => {
               disconnect={disconnect}
               setIsWalletConnected={setIsWalletConnected}
               loading={loading}
+            />
+          </TabsContent>
+
+          <TabsContent value="tokenList">
+            <TokenListPage
+              tokens={tokens}
+              currentPage={currentPage.tokenList}
+              totalPages={totalPages.orders}
+              onPageChange={(page) => handlePageChange("tokenList", page)}
             />
           </TabsContent>
 
