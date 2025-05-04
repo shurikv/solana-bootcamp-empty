@@ -28,7 +28,6 @@ import { createPass, query } from "./utils";
 
 import TakeOfferDialog from "@/components/dialogs/take-offer-dialog";
 import { TokenListPage } from "./pages/token-list";
-import { TokenListProvider, TokenInfo } from "@solana/spl-token-registry";
 
 // Token interface
 interface Token {
@@ -47,7 +46,8 @@ const App: React.FC = () => {
   const [tokens, setTokens] = useState<Token[]>([]);
   const wallet = useAnchorWallet();
   const queryClient = useQueryClient();
-  const [tokenMap, setTokenMap] = useState<Map<string, TokenInfo>>(new Map());
+
+  const connection = new Connection(clusterApiUrl(WalletAdapterNetwork.Devnet));
 
   const { data } = useQuery({
     queryKey: ["offers"],
@@ -142,35 +142,24 @@ const App: React.FC = () => {
     }
   }, [connected, publicKey]);
 
+  // Завантаження токенів гаманця
   useEffect(() => {
-    const getTokens = async () => {
+    const fetchTokens = async () => {
       if (!walletAddress) return;
 
-      const connection = new Connection("https://api.devnet.solana.com", "confirmed");
-      const publicKey = new PublicKey(walletAddress);
+      const tokenAccounts = await connection.getParsedTokenAccountsByOwner(new PublicKey(walletAddress), {
+        programId: TOKEN_PROGRAM_ID,
+      });
 
-      const tokenAccounts = await connection.getParsedTokenAccountsByOwner(
-        publicKey,
-        { programId: TOKEN_PROGRAM_ID }
-      );
-
-      const filtered = tokenAccounts.value
-        .map((acc) => acc.account.data.parsed.info)
+      const tokens = tokenAccounts.value
+        .map((accountInfo) => accountInfo.account.data.parsed.info)
         .filter((info) => info.tokenAmount.uiAmount > 0);
 
-      setTokens(filtered);
+      setTokens(tokens);
     };
 
-    getTokens();
+    fetchTokens();
   }, [walletAddress]);
-
-  useEffect(() => {
-    new TokenListProvider().resolve().then((tokens) => {
-      const tokenList = tokens.filterByChainId(103).getList(); // 103 — devnet, 101 — mainnet
-      const map = new Map(tokenList.map((t) => [t.address, t]));
-      setTokenMap(map);
-    });
-  }, []);
 
   return (
     <main className="flex min-h-screen flex-col items-center justify-between p-24">

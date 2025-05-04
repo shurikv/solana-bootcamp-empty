@@ -9,46 +9,27 @@ import {
 } from "@/components/ui/card";
 import { PaginationControl } from "@/components/pagination-control";
 import { Connection, PublicKey } from "@solana/web3.js";
-import { TokenInfo } from "@solana/spl-token-registry";
-import { Metadata, MetadataData } from "@metaplex-foundation/mpl-token-metadata"; // Оновлений імпорт
+import { clusterApiUrl } from "@solana/web3.js";
+import { Metaplex } from "@metaplex-foundation/js";
 
-const connection = new Connection("https://api.devnet.solana.com", "confirmed");
-
-// Функція для отримання PDA для метаданих токена
-const getMetadataPDA = async (mint: PublicKey) => {
-  const [metadataPDA] = await PublicKey.findProgramAddress(
-    [
-      Buffer.from("metadata"),
-      METADATA_PROGRAM_ID.toBuffer(),
-      mint.toBuffer(),
-    ],
-    METADATA_PROGRAM_ID
-  );
-  return metadataPDA;
-};
 
 // Функція для отримання метаданих токена
-const fetchTokenMetadata = async (mint: string) => {
-    const tokenMint = new PublicKey(mint);
-  
+const fetchTokenMetadata = async (mintAddress: string) => {
     try {
-      const metadataPDA = await getMetadataPDA(tokenMint);
-      const metadataAccount = await connection.getAccountInfo(metadataPDA);
-  
-      if (!metadataAccount || !metadataAccount.data) {
-        throw new Error("No metadata found for this token");
-      }
-  
-      // Завантажуємо метадані з використанням бібліотеки @metaplex-foundation/mpl-token-metadata
-      const metadata = await Metadata.load(connection, metadataPDA);
-  
-      return {
-        name: metadata.data.data.name,
-        symbol: metadata.data.data.symbol,
-        uri: metadata.data.data.uri,
-      };
-    } catch (err) {
-      console.error("Error fetching metadata:", err);
+      const connection = new Connection(clusterApiUrl("devnet"));
+      const metaplex = Metaplex.make(connection);
+      const mint = new PublicKey(mintAddress);
+      const metadata = await metaplex.nfts().findByMint({ mintAddress: mint });
+
+        console.log(metadata);
+        return {
+          name: metadata.name,
+          symbol: metadata.symbol,
+          uri: metadata.uri,
+        };
+
+    } catch (error) {
+      console.error("Error fetching metadata:", error);
       return {
         name: "Unknown",
         symbol: "-",
@@ -79,18 +60,20 @@ export const TokenListPage: React.FC<TokenListProps> = ({
   onPageChange,
 }) => {
     const [metadata, setMetadata] = useState<Map<string, { name: string; symbol: string }>>(new Map());
-    useEffect(() => {
-        const fetchAllMetadata = async () => {
-          const metadataMap = new Map();
-          for (const token of tokens) {
+
+  useEffect(() => {
+    const fetchAllMetadata = async () => {
+      const entries = await Promise.all(
+        tokens.map(async (token) => {
             const { name, symbol } = await fetchTokenMetadata(token.mint);
-            metadataMap.set(token.mint, { name, symbol });
-          }
-          setMetadata(metadataMap);
-        };
+            return [token.mint, { name, symbol }] as const;
+        })
+      );
+      setMetadata(new Map(entries));
+    };
+    fetchAllMetadata();
+  }, [tokens]);
     
-        fetchAllMetadata();
-      }, [tokens]);
   return (
     <Card>
       <CardHeader>
@@ -101,17 +84,15 @@ export const TokenListPage: React.FC<TokenListProps> = ({
       </CardHeader>
       <CardContent>
       <ul className="space-y-4">
-          {tokens.map((token, index) => {
-            return (
-              <li key={index} className="border p-4 rounded-md shadow-sm">
-                <strong>Mint:</strong> {token.mint} <br />
-                <strong>Amount:</strong> {token.tokenAmount.uiAmount} <br />
-                <strong>Decimals:</strong> {token.tokenAmount.decimals} <br />
-                <strong>Name:</strong> {metadata.get(token.mint)?.name || "Unknown"} <br />
-                <strong>Symbol:</strong> {metadata.get(token.mint)?.symbol || "-"} <br />
-              </li>
-            );
-          })}
+          {tokens.map((token, index) => (
+            <li key={index} className="border p-4 rounded-md shadow-sm">
+              <strong>Mint:</strong> {token.mint} <br />
+              <strong>Amount:</strong> {token.tokenAmount.uiAmount} <br />
+              <strong>Decimals:</strong> {token.tokenAmount.decimals} <br />
+              <strong>Name:</strong> {metadata.get(token.mint)?.name || "Unknown"} <br />
+              <strong>Symbol:</strong> {metadata.get(token.mint)?.symbol || "-"} <br />
+            </li>
+          ))}
         </ul>
       </CardContent>
       <CardFooter className="flex justify-center">
@@ -124,3 +105,5 @@ export const TokenListPage: React.FC<TokenListProps> = ({
     </Card>
   );
 };
+
+

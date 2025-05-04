@@ -11,7 +11,6 @@ import {
 
 import "@solana/wallet-adapter-react-ui/styles.css";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { FolderOpen } from "lucide-react";
 
 const queryClient = new QueryClient();
 
