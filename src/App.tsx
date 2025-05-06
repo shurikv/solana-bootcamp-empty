@@ -14,7 +14,7 @@ import { config } from "@/solana-service/config";
 import { Connection, PublicKey } from "@solana/web3.js";
 import { clusterApiUrl } from "@solana/web3.js";
 import { WalletAdapterNetwork } from "@solana/wallet-adapter-base";
-import { TOKEN_PROGRAM_ID } from "@solana/spl-token";
+import { TOKEN_PROGRAM_ID, TOKEN_2022_PROGRAM_ID } from "@solana/spl-token";
 
 import { EscrowProgram } from "@/solana-service/program";
 import { Wallet } from "@coral-xyz/anchor";
@@ -147,11 +147,16 @@ const App: React.FC = () => {
     const fetchTokens = async () => {
       if (!walletAddress) return;
 
-      const tokenAccounts = await connection.getParsedTokenAccountsByOwner(new PublicKey(walletAddress), {
+      const ownerPublicKey = new PublicKey(walletAddress);
+      const tokenAccounts = await connection.getParsedTokenAccountsByOwner(ownerPublicKey, {
         programId: TOKEN_PROGRAM_ID,
       });
 
-      const tokens = tokenAccounts.value
+      const token2022Accounts = await connection.getParsedTokenAccountsByOwner(ownerPublicKey, {
+        programId: TOKEN_2022_PROGRAM_ID,
+      });
+
+      const tokens = [...tokenAccounts.value, ...token2022Accounts.value]
         .map((accountInfo) => accountInfo.account.data.parsed.info)
         .filter((info) => info.tokenAmount.uiAmount > 0);
 
